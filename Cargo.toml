@@ -1,0 +1,26 @@
+[package]
+name = "iderive"
+version = "0.1.0"
+authors = ["Maia <66437537+maia-s@users.noreply.github.com>"]
+edition = "2018"
+description = "Drop-in replacement for derive that doesn't directly depend on generic bounds"
+readme = "README.md"
+documentation = "https://docs.rs/iderive"
+homepage = "https://github.com/maia-s/iderive"
+repository = "https://github.com/maia-s/iderive"
+license = "BSL-1.0"
+keywords = ["derive"]
+categories = ["rust-patterns"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "1.0"
+proc-macro2 = "1.0"
+
+[dependencies.syn]
+version = "1.0"
+features = ["full", "parsing", "printing"]
