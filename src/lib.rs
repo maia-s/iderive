@@ -138,8 +138,6 @@ pub fn iderive(args: TokenStream1, input: TokenStream1) -> TokenStream1 {
         }
     }
 
-    dbg!(output.to_string());
-
     output.into()
 }
 
