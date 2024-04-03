@@ -1,4 +1,4 @@
-// Copyright 2021 Maia <66437537+maia-s@users.noreply.github.com>
+// Copyright 2021-2024 Maia S. R. <66437537+maia-s@users.noreply.github.com>
 // Distributed under the Boost Software License, version 1.0
 // (See accompanying file LICENSE.md)
 
@@ -50,6 +50,7 @@
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
+use std::collections::BTreeMap;
 use syn::{
     parse::{self, Parse, ParseStream},
     parse_macro_input,
@@ -119,19 +120,23 @@ pub fn iderive(args: TokenStream1, input: TokenStream1) -> TokenStream1 {
     let mut output = TokenStream::from(input.clone());
     let input = parse_macro_input!(input as Input);
     let traits = parse_macro_input!(args as Traits);
+    let traits: BTreeMap<String, Ident> = traits
+        .0
+        .into_iter()
+        .map(|id| (id.to_string(), id))
+        .collect();
 
-    for id in traits.0 {
-        let s = id.to_string();
+    for (s, id) in traits.iter() {
         match s.as_str() {
-            "Clone" => derive_clone(&input, &id, &mut output),
-            "Copy" => derive_copy(&input, &id, &mut output),
-            "Debug" => derive_debug(&input, &id, &mut output),
-            "Default" => derive_default(&input, &id, &mut output),
-            "PartialEq" => derive_partialeq(&input, &id, &mut output),
-            "Eq" => derive_eq(&input, &id, &mut output),
-            "PartialOrd" => derive_partialord(&input, &id, &mut output),
-            "Ord" => derive_ord(&input, &id, &mut output),
-            "Hash" => derive_hash(&input, &id, &mut output),
+            "Clone" => derive_clone(&input, id, &mut output, traits.contains_key("Copy")),
+            "Copy" => derive_copy(&input, id, &mut output),
+            "Debug" => derive_debug(&input, id, &mut output),
+            "Default" => derive_default(&input, id, &mut output),
+            "PartialEq" => derive_partialeq(&input, id, &mut output),
+            "Eq" => derive_eq(&input, id, &mut output),
+            "PartialOrd" => derive_partialord(&input, id, &mut output, traits.contains_key("Ord")),
+            "Ord" => derive_ord(&input, id, &mut output),
+            "Hash" => derive_hash(&input, id, &mut output),
             _ => output.extend(
                 Error::new(id.span(), format!("Unsupported trait: `{}`", s)).to_compile_error(),
             ),
@@ -141,17 +146,27 @@ pub fn iderive(args: TokenStream1, input: TokenStream1) -> TokenStream1 {
     output.into()
 }
 
-fn derive_clone(input: &Input, traitid: &Ident, output: &mut TokenStream) {
-    let mut clone = TokenStream::new();
-    input.begin_trait(quote! { ::core::clone::#traitid }, output, |name| {
-        clone.extend(quote! { #name: self.#name.clone(), });
-    });
-    output.extend::<TokenStream>(quote! {{
-        #[inline]
-        fn clone(&self) -> Self {
-            Self { #clone }
-        }
-    }});
+fn derive_clone(input: &Input, traitid: &Ident, output: &mut TokenStream, impls_copy: bool) {
+    if impls_copy {
+        input.begin_trait(quote! { ::core::clone::#traitid }, output, |_| ());
+        output.extend::<TokenStream>(quote! {{
+            #[inline]
+            fn clone(&self) -> Self {
+                *self
+            }
+        }});
+    } else {
+        let mut clone = TokenStream::new();
+        input.begin_trait(quote! { ::core::clone::#traitid }, output, |name| {
+            clone.extend(quote! { #name: self.#name.clone(), });
+        });
+        output.extend::<TokenStream>(quote! {{
+            #[inline]
+            fn clone(&self) -> Self {
+                Self { #clone }
+            }
+        }});
+    }
 }
 
 fn derive_copy(input: &Input, traitid: &Ident, output: &mut TokenStream) {
@@ -227,22 +242,32 @@ fn derive_eq(input: &Input, traitid: &Ident, output: &mut TokenStream) {
     output.extend::<TokenStream>(quote! {{}});
 }
 
-fn derive_partialord(input: &Input, traitid: &Ident, output: &mut TokenStream) {
-    let mut cmp = quote! { let cmp = Some(::core::cmp::Ordering::Equal); };
-    input.begin_trait(quote! { ::core::cmp::#traitid }, output, |name| {
-        cmp.extend(quote! {
-            if cmp != Some(::core::cmp::Ordering::Equal) {
-                return cmp;
+fn derive_partialord(input: &Input, traitid: &Ident, output: &mut TokenStream, impls_ord: bool) {
+    if impls_ord {
+        input.begin_trait(quote! { ::core::cmp::#traitid }, output, |_| ());
+        output.extend::<TokenStream>(quote! {{
+            #[inline]
+            fn partial_cmp(&self, other: &Self) -> Option<::core::cmp::Ordering> {
+                Some(::core::cmp::Ord::cmp(self, other))
             }
-            let cmp = self.#name.partial_cmp(&other.#name);
+        }});
+    } else {
+        let mut cmp = quote! { let cmp = Some(::core::cmp::Ordering::Equal); };
+        input.begin_trait(quote! { ::core::cmp::#traitid }, output, |name| {
+            cmp.extend(quote! {
+                if cmp != Some(::core::cmp::Ordering::Equal) {
+                    return cmp;
+                }
+                let cmp = self.#name.partial_cmp(&other.#name);
+            });
         });
-    });
-    output.extend::<TokenStream>(quote! {{
-        #[inline]
-        fn partial_cmp(&self, other: &Self) -> Option<::core::cmp::Ordering> {
-            #cmp cmp
-        }
-    }});
+        output.extend::<TokenStream>(quote! {{
+            #[inline]
+            fn partial_cmp(&self, other: &Self) -> Option<::core::cmp::Ordering> {
+                #cmp cmp
+            }
+        }});
+    }
 }
 
 fn derive_ord(input: &Input, traitid: &Ident, output: &mut TokenStream) {
