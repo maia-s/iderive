@@ -45,6 +45,9 @@
 //! ## Supported traits
 //! `iderive` is currently implemented for `Clone`, `Copy`, `Debug`,
 //! `Default`, `PartialEq`, `Eq`, `PartialOrd`, `Ord` and `Hash`.
+//!
+//! ## Version history
+//! See README.md for version history.
 
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};

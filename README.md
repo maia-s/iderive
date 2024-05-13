@@ -39,3 +39,16 @@ let c = a; // Works!
 ## Supported traits
 `iderive` is currently implemented for `Clone`, `Copy`, `Debug`,
 `Default`, `PartialEq`, `Eq`, `PartialOrd`, `Ord` and `Hash`.
+
+## Version history
+- 1.1.1
+  - Guard against redefinitions of the `bool` type
+  - Don't require syn's `full` feature
+  - Add more license options
+- 1.1.0
+  - Use canonical implementations of `Clone`/`PartialOrd` if `Copy`/`Ord` is also derived
+  - Update to syn 2.0
+- 1.0.0
+  - Remove debug output that was left in by accident
+- 0.1.0
+  - First release
