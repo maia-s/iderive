@@ -54,7 +54,7 @@ use syn::{
     parse::{self, Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    Error, Fields, Ident, Index, ItemStruct, Token,
+    Data, DeriveInput, Error, Fields, Ident, Index, Token,
 };
 
 struct Traits(Punctuated<Ident, Token![,]>);
@@ -67,17 +67,38 @@ impl Parse for Traits {
     }
 }
 
-struct Input(ItemStruct);
+struct Input(DeriveInput);
 
 impl Parse for Input {
     fn parse(input: ParseStream) -> parse::Result<Self> {
-        let mut input = Self(ItemStruct::parse(input)?);
+        let mut input = Self(DeriveInput::parse(input)?);
+
+        match input.0.data {
+            Data::Struct(_) => (),
+
+            Data::Enum(e) => {
+                return Err(Error::new(
+                    e.enum_token.span,
+                    "iderive currently doesn't support deriving traits for enums",
+                ));
+            }
+
+            Data::Union(e) => {
+                return Err(Error::new(
+                    e.union_token.span,
+                    "iderive currently doesn't support deriving traits for unions",
+                ));
+            }
+        }
+
         input.0.generics.make_where_clause();
+
         if let Some(ref mut wh) = input.0.generics.where_clause {
             if !wh.predicates.empty_or_trailing() {
                 wh.predicates.push_punct(Token![,](Span::call_site()));
             }
         }
+
         Ok(input)
     }
 }
@@ -100,15 +121,21 @@ impl Input {
             impl #imp #trait_tokens for #name #ty #wher
         });
 
-        for (i, field) in self.0.fields.iter().enumerate() {
-            let ty = &field.ty;
-            output.extend::<TokenStream>(quote! { #ty: #trait_tokens, });
+        match &self.0.data {
+            Data::Struct(s) => {
+                for (i, field) in s.fields.iter().enumerate() {
+                    let ty = &field.ty;
+                    output.extend::<TokenStream>(quote! { #ty: #trait_tokens, });
 
-            per_field(if let Some(name) = &field.ident {
-                name.to_token_stream()
-            } else {
-                Index::from(i).to_token_stream()
-            });
+                    per_field(if let Some(name) = &field.ident {
+                        name.to_token_stream()
+                    } else {
+                        Index::from(i).to_token_stream()
+                    });
+                }
+            }
+
+            _ => panic!("not supported"),
         }
     }
 }
@@ -175,20 +202,25 @@ fn derive_copy(input: &Input, traitid: &Ident, output: &mut TokenStream) {
 
 fn derive_debug(input: &Input, traitid: &Ident, output: &mut TokenStream) {
     let mut debug = TokenStream::new();
-    input.begin_trait(
-        quote! { ::core::fmt::#traitid },
-        output,
-        |name| match input.0.fields {
+
+    let Data::Struct(s) = &input.0.data else {
+        panic!("not supported");
+    };
+
+    input.begin_trait(quote! { ::core::fmt::#traitid }, output, |name| {
+        match s.fields {
             Fields::Named(_) => {
                 let name_s = name.to_string();
                 debug.extend(quote! { .field(#name_s, &self.#name) })
             }
             Fields::Unnamed(_) => debug.extend(quote! { .field(&self.#name) }),
             Fields::Unit => (),
-        },
-    );
+        }
+    });
+
     let id_s = &input.0.ident.to_string();
-    output.extend::<TokenStream>(match input.0.fields {
+
+    output.extend::<TokenStream>(match s.fields {
         Fields::Named(_) => quote! {{
             #[inline]
             fn fmt(&self, fmt: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
