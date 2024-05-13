@@ -1,6 +1,5 @@
 // Copyright 2021-2024 Maia S. R. <66437537+maia-s@users.noreply.github.com>
-// Distributed under the Boost Software License, version 1.0
-// (See accompanying file LICENSE.md)
+// (See accompanying files LICENSE*.md for license options)
 
 //! # iderive: Inner Derive
 //!

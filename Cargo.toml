@@ -8,11 +8,9 @@ readme = "README.md"
 documentation = "https://docs.rs/iderive"
 homepage = "https://github.com/maia-s/iderive"
 repository = "https://github.com/maia-s/iderive"
-license = "BSL-1.0"
+license = "Zlib OR MIT OR Apache-2.0 OR BSL-1.0"
 keywords = ["derive", "proc-macro"]
 categories = ["rust-patterns"]
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 proc-macro = true
