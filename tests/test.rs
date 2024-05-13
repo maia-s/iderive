@@ -196,3 +196,27 @@ fn named_struct_2() {
     assert!(s > s4);
     assert_eq!("Named2 { one: 0, two: 1 }", format!("{:?}", s));
 }
+
+#[test]
+fn non_exhaustive_named_struct() {
+    #[iderive(Debug)]
+    struct Exhaustive {
+        value: i32,
+    }
+
+    assert_eq!(
+        &format!("{:?}", Exhaustive { value: 0 }),
+        "Exhaustive { value: 0 }"
+    );
+
+    #[iderive(Debug)]
+    #[non_exhaustive]
+    struct NonExhaustive {
+        value: i32,
+    }
+
+    assert_eq!(
+        &format!("{:?}", NonExhaustive { value: 0 }),
+        "NonExhaustive { value: 0, .. }"
+    );
+}

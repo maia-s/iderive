@@ -42,6 +42,7 @@ let c = a; // Works!
 
 ## Version history
 - 1.1.1
+  - Indicate non-exhausiveness in the output of the `Debug` trait for named structs
   - Guard against redefinitions of the `bool` type
   - Don't require syn's `full` feature
   - Add more license options

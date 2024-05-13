@@ -57,7 +57,7 @@ use syn::{
     parse::{self, Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    Data, DeriveInput, Error, Fields, Ident, Index, Token,
+    AttrStyle, Data, DeriveInput, Error, Fields, Ident, Index, Meta, Token,
 };
 
 struct Traits(Punctuated<Ident, Token![,]>);
@@ -221,19 +221,40 @@ fn derive_debug(input: &Input, traitid: &Ident, output: &mut TokenStream) {
         }
     });
 
+    let mut finish = Ident::new("finish", Span::call_site());
+
+    // check for non_exhaustive attribute. finish_non_exhaustive only exists for named structs
+    if let Fields::Named(_) = s.fields {
+        for attr in &input.0.attrs {
+            if let AttrStyle::Outer = attr.style {
+                if let Meta::Path(path) = &attr.meta {
+                    if path.segments.len() == 1 {
+                        let segment = &path.segments[0];
+                        if segment.arguments.is_none()
+                            && &segment.ident.to_string() == "non_exhaustive"
+                        {
+                            finish = Ident::new("finish_non_exhaustive", Span::call_site());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let id_s = &input.0.ident.to_string();
 
     output.extend::<TokenStream>(match s.fields {
         Fields::Named(_) => quote! {{
             #[inline]
             fn fmt(&self, fmt: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                fmt.debug_struct(#id_s) #debug .finish()
+                fmt.debug_struct(#id_s) #debug . #finish ()
             }
         }},
         Fields::Unnamed(_) => quote! {{
             #[inline]
             fn fmt(&self, fmt: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                fmt.debug_tuple(#id_s) #debug .finish()
+                fmt.debug_tuple(#id_s) #debug . #finish ()
             }
         }},
         Fields::Unit => quote! {{
