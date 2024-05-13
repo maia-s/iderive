@@ -41,6 +41,9 @@ let c = a; // Works!
 `Default`, `PartialEq`, `Eq`, `PartialOrd`, `Ord` and `Hash`.
 
 ## Version history
+- 1.1.2
+  - Remove the non-exhaustive support added in 1.1.1 as it doesn't make sense when all
+    fields are displayed anyway. This matches the output of `#[derive(Debug)]`
 - 1.1.1
   - Indicate non-exhausiveness in the output of the `Debug` trait for named structs
   - Guard against redefinitions of the `bool` type
