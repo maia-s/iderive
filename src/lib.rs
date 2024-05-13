@@ -231,7 +231,7 @@ fn derive_partialeq(input: &Input, traitid: &Ident, output: &mut TokenStream) {
     });
     output.extend::<TokenStream>(quote! {{
         #[inline]
-        fn eq(&self, other: &Self) -> bool {
+        fn eq(&self, other: &Self) -> ::core::primitive::bool {
             #cmp
         }
     }});

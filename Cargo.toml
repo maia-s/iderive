@@ -1,6 +1,6 @@
 [package]
 name = "iderive"
-version = "1.1.0"
+version = "1.1.1-wip"
 authors = ["Maia S. R. <66437537+maia-s@users.noreply.github.com>"]
 edition = "2018"
 description = "Drop-in replacement for derive that doesn't directly depend on generic bounds"
