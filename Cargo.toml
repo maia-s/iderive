@@ -1,8 +1,8 @@
 [package]
 name = "iderive"
-version = "1.1.2"
+version = "1.2.0"
 authors = ["Maia S. R. <66437537+maia-s@users.noreply.github.com>"]
-edition = "2018"
+edition = "2021"
 description = "Drop-in replacement for derive that doesn't directly depend on generic bounds"
 readme = "README.md"
 documentation = "https://docs.rs/iderive"
@@ -14,12 +14,3 @@ categories = ["rust-patterns"]
 
 [lib]
 proc-macro = true
-
-[dependencies]
-quote = "1.0"
-proc-macro2 = "1.0"
-
-[dependencies.syn]
-version = "2.0"
-default-features = false
-features = ["derive", "parsing", "printing", "proc-macro"]

@@ -1,9 +1,5 @@
-// Copyright 2021-2024 Maia S. R. <66437537+maia-s@users.noreply.github.com>
-// Distributed under the Boost Software License, version 1.0
-// (See accompanying file LICENSE.md)
-
-#[macro_use]
-extern crate iderive;
+use core::marker::PhantomData;
+use iderive::iderive;
 
 #[test]
 fn unit_struct() {
@@ -34,9 +30,9 @@ fn unit_struct() {
 #[test]
 fn tuple_struct_0() {
     #[iderive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    struct Tuple();
+    struct Tuple<const A: usize = 0>();
 
-    let s = Tuple();
+    let s = Tuple::<0>();
     let s2 = s;
     #[allow(clippy::clone_on_copy)]
     let s3 = s.clone();
@@ -195,4 +191,35 @@ fn named_struct_2() {
     assert_eq!(s, s3);
     assert!(s > s4);
     assert_eq!("Named2 { one: 0, two: 1 }", format!("{:?}", s));
+}
+
+#[test]
+fn canonical() {
+    #[iderive(Clone, Copy)]
+    struct S<T>(T);
+
+    let s = S(String::new());
+    let _s2 = s.clone();
+
+    #[iderive(PartialEq, Eq, PartialOrd, Ord)]
+    struct S2<T>(T);
+
+    let s = S2(0.5);
+    let s2 = S2(1.5);
+    assert!(s < s2);
+}
+
+#[test]
+fn generics() {
+    trait Trait<T> {}
+    impl<T> Trait<T> for String {}
+    struct S<T, const A: bool>(T);
+
+    #[iderive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    struct Struct<T, U: Trait<T> = T, const A: bool = true, V = S<U, A>>(PhantomData<(T, U, V)>);
+
+    let s = Struct::<String>::default();
+    let s2 = s;
+    let s3 = s;
+    assert!(s2 <= s3);
 }

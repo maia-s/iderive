@@ -49,288 +49,419 @@
 //! ## Version history
 //! See README.md for version history.
 
-use proc_macro::TokenStream as TokenStream1;
-use proc_macro2::{Span, TokenStream};
-use quote::{quote, ToTokens};
-use std::collections::BTreeMap;
-use syn::{
-    parse::{self, Parse, ParseStream},
-    parse_macro_input,
-    punctuated::Punctuated,
-    Data, DeriveInput, Error, Fields, Ident, Index, Token,
-};
+#![allow(clippy::blocks_in_conditions)]
+//#![recursion_limit = "1024"]
 
-struct Traits(Punctuated<Ident, Token![,]>);
-
-impl Parse for Traits {
-    fn parse(input: ParseStream) -> parse::Result<Self> {
-        Ok(Self(Punctuated::<Ident, Token![,]>::parse_terminated(
-            input,
-        )?))
-    }
+macro_rules! Op {
+    ($op:tt) => {
+        $crate::parse::Op<
+            { $crate::parse::into_ascii_char_first(stringify!($op)) },
+            { $crate::parse::into_ascii_char_second(stringify!($op)) },
+        >
+    };
 }
 
-struct Input(DeriveInput);
+macro_rules! miniquote {
+    (@@ $q:tt,) => {};
 
-impl Parse for Input {
-    fn parse(input: ParseStream) -> parse::Result<Self> {
-        let mut input = Self(DeriveInput::parse(input)?);
+    (@@ $q:tt, # $i:ident $($rest:tt)*) => {{
+        $i.into_token_trees($q);
+        miniquote!(@@ $q, $($rest)*);
+    }};
 
-        match input.0.data {
-            Data::Struct(_) => (),
+    (@@ $q:tt, $ident:ident $($rest:tt)*) => {{
+        $q.extend([TokenTree::Ident(Ident::new(stringify!($ident), Span::mixed_site()))]);
+        miniquote!(@@ $q, $($rest)*);
+    }};
 
-            Data::Enum(e) => {
-                return Err(Error::new(
-                    e.enum_token.span,
-                    "iderive currently doesn't support deriving traits for enums",
-                ));
-            }
+    (@@ $q:tt, ( $($tt:tt)* ) $($rest:tt)*) => {{
+        $q.extend([TokenTree::Group(Group::new(Delimiter::Parenthesis, miniquote!($($tt)*)))]);
+        miniquote!(@@ $q, $($rest)*);
+    }};
 
-            Data::Union(e) => {
-                return Err(Error::new(
-                    e.union_token.span,
-                    "iderive currently doesn't support deriving traits for unions",
-                ));
-            }
-        }
+    (@@ $q:tt, { $($tt:tt)* } $($rest:tt)*) => {{
+        $q.extend([TokenTree::Group(Group::new(Delimiter::Brace, miniquote!($($tt)*)))]);
+        miniquote!(@@ $q, $($rest)*);
+    }};
 
-        input.0.generics.make_where_clause();
+    (@@ $q:tt, [ $($tt:tt)* ] $($rest:tt)*) => {{
+        $q.extend([TokenTree::Group(Group::new(Delimiter::Bracket, miniquote!($($tt)*)))]);
+        miniquote!(@@ $q, $($rest)*);
+    }};
 
-        if let Some(ref mut wh) = input.0.generics.where_clause {
-            if !wh.predicates.empty_or_trailing() {
-                wh.predicates.push_punct(Token![,](Span::call_site()));
-            }
-        }
+    (@@ $q:tt, # $($rest:tt)*) => {
+        <Op![#]>::default().into_token_trees($q);
+        miniquote!(@@ $q, $($rest)*);
+    };
 
-        Ok(input)
-    }
+    (@@ $q:tt, && $($rest:tt)*) => {
+        <Op![&&]>::default().into_token_trees($q);
+        miniquote!(@@ $q, $($rest)*);
+    };
+
+    (@@ $q:tt, & $($rest:tt)*) => {
+        <Op![&]>::default().into_token_trees($q);
+        miniquote!(@@ $q, $($rest)*);
+    };
+
+    (@@ $q:tt, :: $($rest:tt)*) => {
+        <Op![::]>::default().into_token_trees($q);
+        miniquote!(@@ $q, $($rest)*);
+    };
+
+    (@@ $q:tt, : $($rest:tt)*) => {
+        <Op![:]>::default().into_token_trees($q);
+        miniquote!(@@ $q, $($rest)*);
+    };
+
+    (@@ $q:tt, -> $($rest:tt)*) => {
+        <Op![->]>::default().into_token_trees($q);
+        miniquote!(@@ $q, $($rest)*);
+    };
+
+    (@@ $q:tt, => $($rest:tt)*) => {
+        <Op![=>]>::default().into_token_trees($q);
+        miniquote!(@@ $q, $($rest)*);
+    };
+
+    (@@ $q:tt, . $($rest:tt)*) => {
+        <Op![.]>::default().into_token_trees($q);
+        miniquote!(@@ $q, $($rest)*);
+    };
+
+    (@@ $q:tt, , $($rest:tt)*) => {
+        <Op![,]>::default().into_token_trees($q);
+        miniquote!(@@ $q, $($rest)*);
+    };
+
+    (@@ $q:tt, ; $($rest:tt)*) => {
+        <Op![;]>::default().into_token_trees($q);
+        miniquote!(@@ $q, $($rest)*);
+    };
+
+    (@@ $q:tt, < $($rest:tt)*) => {
+        <Op![<]>::default().into_token_trees($q);
+        miniquote!(@@ $q, $($rest)*);
+    };
+
+    (@@ $q:tt, > $($rest:tt)*) => {
+        <Op![>]>::default().into_token_trees($q);
+        miniquote!(@@ $q, $($rest)*);
+    };
+
+    (@@ $($tt:tt)*) => {
+        compile_error!("unhandled token")
+    };
+
+    ($($tt:tt)*) => {{
+        let mut __quote = TokenStream::new();
+        miniquote!(@@ {&mut __quote}, $($tt)*);
+        __quote
+    }};
 }
 
-impl Input {
-    fn begin_trait(
-        &self,
-        trait_tokens: TokenStream,
-        output: &mut TokenStream,
-        mut per_field: impl FnMut(TokenStream),
-    ) {
-        let name = &self.0.ident;
-        let (imp, ty, wher) = self.0.generics.split_for_impl();
-        let mut wher = wher.unwrap().to_token_stream();
-        if wher.is_empty() {
-            wher = Token![where](Span::call_site()).to_token_stream();
-        }
+mod parse;
 
-        output.extend::<TokenStream>(quote! {
-            impl #imp #trait_tokens for #name #ty #wher
-        });
-
-        match &self.0.data {
-            Data::Struct(s) => {
-                for (i, field) in s.fields.iter().enumerate() {
-                    let ty = &field.ty;
-                    output.extend::<TokenStream>(quote! { #ty: #trait_tokens, });
-
-                    per_field(if let Some(name) = &field.ident {
-                        name.to_token_stream()
-                    } else {
-                        Index::from(i).to_token_stream()
-                    });
-                }
-            }
-
-            _ => panic!("not supported"),
-        }
-    }
-}
+use parse::*;
+use proc_macro::{Delimiter, Group, Ident, Literal, Span, TokenStream, TokenTree};
 
 /// Inner derive. Used like `derive`. See the crate documentation for details.
 #[proc_macro_attribute]
-pub fn iderive(args: TokenStream1, input: TokenStream1) -> TokenStream1 {
-    let mut output = TokenStream::from(input.clone());
-    let input = parse_macro_input!(input as Input);
-    let traits = parse_macro_input!(args as Traits);
-    let traits: BTreeMap<String, Ident> = traits
-        .0
-        .into_iter()
-        .map(|id| (id.to_string(), id))
-        .collect();
+pub fn iderive(args: TokenStream, input: TokenStream) -> TokenStream {
+    let mut output = TokenStream::new();
+    let args = &mut { into_parse_input(args) };
+    let input = &mut { into_parse_input(input) };
 
-    for (s, id) in traits.iter() {
-        match s.as_str() {
-            "Clone" => derive_clone(&input, id, &mut output, traits.contains_key("Copy")),
-            "Copy" => derive_copy(&input, id, &mut output),
-            "Debug" => derive_debug(&input, id, &mut output),
-            "Default" => derive_default(&input, id, &mut output),
-            "PartialEq" => derive_partialeq(&input, id, &mut output),
-            "Eq" => derive_eq(&input, id, &mut output),
-            "PartialOrd" => derive_partialord(&input, id, &mut output, traits.contains_key("Ord")),
-            "Ord" => derive_ord(&input, id, &mut output),
-            "Hash" => derive_hash(&input, id, &mut output),
-            _ => output.extend(
-                Error::new(id.span(), format!("Unsupported trait: `{}`", s)).to_compile_error(),
-            ),
+    match (|| -> Result<(), Error> {
+        let traits = Punctuated::<Ident, Op![,]>::parse(args)?;
+        if let Some(tt) = args.next() {
+            return Err(Error::with_span(tt.span(), "unrecognized argument"));
         }
-    }
 
-    output.into()
-}
+        let attrs = Attributes::parse(input)?;
+        let vis = Visibility::try_parse(input)?;
+        if let Some(mut s) = Struct::try_parse(input)? {
+            s.set_attrs_and_vis(attrs, vis);
 
-fn derive_clone(input: &Input, traitid: &Ident, output: &mut TokenStream, impls_copy: bool) {
-    if impls_copy {
-        input.begin_trait(quote! { ::core::clone::#traitid }, output, |_| ());
-        output.extend::<TokenStream>(quote! {{
-            #[inline]
-            fn clone(&self) -> Self {
-                *self
+            if let Some(union_kw) = s.union_kw {
+                return Err(Error::with_span(
+                    union_kw.span(),
+                    "iderive can't be used on unions",
+                ));
             }
-        }});
-    } else {
-        let mut clone = TokenStream::new();
-        input.begin_trait(quote! { ::core::clone::#traitid }, output, |name| {
-            clone.extend(quote! { #name: self.#name.clone(), });
-        });
-        output.extend::<TokenStream>(quote! {{
-            #[inline]
-            fn clone(&self) -> Self {
-                Self { #clone }
-            }
-        }});
-    }
-}
 
-fn derive_copy(input: &Input, traitid: &Ident, output: &mut TokenStream) {
-    input.begin_trait(quote! { ::core::marker::#traitid }, output, |_| ());
-    output.extend::<TokenStream>(quote! {{}});
-}
+            for trait_id in traits.into_values() {
+                let trait_s = trait_id.to_string();
+                match trait_s.as_str() {
+                    "Clone" => {
+                        let is_unit_struct = s.is_unit_struct();
+                        impl_for_struct(
+                            &mut output,
+                            &mut s,
+                            Path::for_ident("::core::clone", trait_id)?,
+                            move |body| {
+                                if is_unit_struct {
+                                    miniquote! {
+                                        fn clone(&self) -> Self {
+                                            Self
+                                        }
+                                    }
+                                } else {
+                                    miniquote! {
+                                        fn clone(&self) -> Self {
+                                            Self { #body }
+                                        }
+                                    }
+                                }
+                            },
+                            |fid, _| {
+                                miniquote! {
+                                    #fid: self.#fid.clone(),
+                                }
+                            },
+                        )
+                    }
 
-fn derive_debug(input: &Input, traitid: &Ident, output: &mut TokenStream) {
-    let mut debug = TokenStream::new();
+                    "Copy" => impl_for_struct(
+                        &mut output,
+                        &mut s,
+                        Path::for_ident("::core::marker", trait_id)?,
+                        |_| TokenStream::new(),
+                        |_, _| TokenStream::new(),
+                    ),
 
-    let Data::Struct(s) = &input.0.data else {
-        panic!("not supported");
-    };
+                    "Debug" => {
+                        let struct_name = s.ident.to_string();
+                        let is_unit_struct = s.is_unit_struct();
+                        let is_tuple_struct = s.is_tuple_struct();
+                        impl_for_struct(
+                            &mut output,
+                            &mut s,
+                            Path::for_ident("::core::fmt", trait_id)?,
+                            move |body| {
+                                if is_unit_struct {
+                                    miniquote! {
+                                        fn fmt(&self, fmt: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                                            fmt.write_str(#struct_name)
+                                        }
+                                    }
+                                } else {
+                                    let method = Ident::new(
+                                        if is_tuple_struct {
+                                            "debug_tuple"
+                                        } else {
+                                            "debug_struct"
+                                        },
+                                        Span::call_site(),
+                                    );
+                                    miniquote! {
+                                        fn fmt(&self, fmt: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                                            fmt.#method(#struct_name) #body .finish()
+                                        }
+                                    }
+                                }
+                            },
+                            |fid, field| {
+                                if let Some(name) = &field.name {
+                                    let name = name.to_string();
+                                    miniquote! {
+                                        .field(#name, &self.#fid)
+                                    }
+                                } else {
+                                    miniquote! {
+                                        .field(&self.#fid)
+                                    }
+                                }
+                            },
+                        )
+                    }
 
-    input.begin_trait(quote! { ::core::fmt::#traitid }, output, |name| {
-        match s.fields {
-            Fields::Named(_) => {
-                let name_s = name.to_string();
-                debug.extend(quote! { .field(#name_s, &self.#name) })
-            }
-            Fields::Unnamed(_) => debug.extend(quote! { .field(&self.#name) }),
-            Fields::Unit => (),
-        }
-    });
+                    "Default" => {
+                        let is_unit_struct = s.is_unit_struct();
+                        impl_for_struct(
+                            &mut output,
+                            &mut s,
+                            Path::for_ident("::core::default", trait_id)?,
+                            |body| {
+                                if is_unit_struct {
+                                    miniquote! {
+                                        fn default() -> Self {
+                                            Self
+                                        }
+                                    }
+                                } else {
+                                    miniquote! {
+                                        fn default() -> Self {
+                                            Self { #body }
+                                        }
+                                    }
+                                }
+                            },
+                            |fid, _| {
+                                miniquote! {
+                                    #fid: ::core::default::Default::default(),
+                                }
+                            },
+                        )
+                    }
 
-    let id_s = &input.0.ident.to_string();
+                    "PartialEq" => impl_for_struct(
+                        &mut output,
+                        &mut s,
+                        Path::for_ident("::core::cmp", trait_id)?,
+                        |body| {
+                            miniquote! {
+                                fn eq(&self, other: &Self) -> ::core::primitive::bool {
+                                    true #body
+                                }
+                            }
+                        },
+                        |fid, _| {
+                            miniquote! {
+                                && self.#fid.eq(&other.#fid)
+                            }
+                        },
+                    ),
 
-    output.extend::<TokenStream>(match s.fields {
-        Fields::Named(_) => quote! {{
-            #[inline]
-            fn fmt(&self, fmt: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                fmt.debug_struct(#id_s) #debug .finish()
-            }
-        }},
-        Fields::Unnamed(_) => quote! {{
-            #[inline]
-            fn fmt(&self, fmt: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                fmt.debug_tuple(#id_s) #debug .finish()
-            }
-        }},
-        Fields::Unit => quote! {{
-            #[inline]
-            fn fmt(&self, fmt: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                fmt.write_str(#id_s)
-            }
-        }},
-    });
-}
+                    "Eq" => impl_for_struct(
+                        &mut output,
+                        &mut s,
+                        Path::for_ident("::core::cmp", trait_id)?,
+                        |_| TokenStream::new(),
+                        |_, _| TokenStream::new(),
+                    ),
 
-fn derive_default(input: &Input, traitid: &Ident, output: &mut TokenStream) {
-    let mut default = TokenStream::new();
-    input.begin_trait(quote! { ::core::default::#traitid }, output, |name| {
-        default.extend(quote! { #name: ::core::default::Default::default(), });
-    });
-    output.extend::<TokenStream>(quote! {{
-        #[inline]
-        fn default() -> Self {
-            Self { #default }
-        }
-    }});
-}
+                    "PartialOrd" => impl_for_struct(
+                        &mut output,
+                        &mut s,
+                        Path::for_ident("::core::cmp", trait_id)?,
+                        |body| {
+                            miniquote! {
+                                fn partial_cmp(&self, other: &Self) -> ::core::option::Option<::core::cmp::Ordering> {
+                                    #body
+                                    ::core::option::Option::Some(::core::cmp::Ordering::Equal)
+                                }
+                            }
+                        },
+                        |fid, _| {
+                            miniquote! {
+                                match self.#fid.partial_cmp(&other.#fid) {
+                                    ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
+                                    result => return result,
+                                }
+                            }
+                        },
+                    ),
 
-fn derive_partialeq(input: &Input, traitid: &Ident, output: &mut TokenStream) {
-    let mut cmp = quote! { true };
-    input.begin_trait(quote! { ::core::cmp::#traitid }, output, |name| {
-        cmp.extend(quote! { && self.#name.eq(&other.#name) });
-    });
-    output.extend::<TokenStream>(quote! {{
-        #[inline]
-        fn eq(&self, other: &Self) -> ::core::primitive::bool {
-            #cmp
-        }
-    }});
-}
+                    "Ord" => impl_for_struct(
+                        &mut output,
+                        &mut s,
+                        Path::for_ident("::core::cmp", trait_id)?,
+                        |body| {
+                            miniquote! {
+                                fn cmp(&self, other: &Self) -> ::core::cmp::Ordering {
+                                    #body
+                                    ::core::cmp::Ordering::Equal
+                                }
+                            }
+                        },
+                        |fid, _| {
+                            miniquote! {
+                                match self.#fid.cmp(&other.#fid) {
+                                    ::core::cmp::Ordering::Equal => (),
+                                    result => return result,
+                                }
+                            }
+                        },
+                    ),
 
-fn derive_eq(input: &Input, traitid: &Ident, output: &mut TokenStream) {
-    input.begin_trait(quote! { ::core::cmp::#traitid }, output, |_| ());
-    output.extend::<TokenStream>(quote! {{}});
-}
+                    "Hash" => impl_for_struct(
+                        &mut output,
+                        &mut s,
+                        Path::for_ident("::core::hash", trait_id)?,
+                        |body| {
+                            miniquote! {
+                                fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) {
+                                    #body
+                                }
+                            }
+                        },
+                        |fid, _| {
+                            miniquote! {
+                                self.#fid.hash(state);
+                            }
+                        },
+                    ),
 
-fn derive_partialord(input: &Input, traitid: &Ident, output: &mut TokenStream, impls_ord: bool) {
-    if impls_ord {
-        input.begin_trait(quote! { ::core::cmp::#traitid }, output, |_| ());
-        output.extend::<TokenStream>(quote! {{
-            #[inline]
-            fn partial_cmp(&self, other: &Self) -> Option<::core::cmp::Ordering> {
-                Some(::core::cmp::Ord::cmp(self, other))
-            }
-        }});
-    } else {
-        let mut cmp = quote! { let cmp = Some(::core::cmp::Ordering::Equal); };
-        input.begin_trait(quote! { ::core::cmp::#traitid }, output, |name| {
-            cmp.extend(quote! {
-                if cmp != Some(::core::cmp::Ordering::Equal) {
-                    return cmp;
+                    _ => {
+                        return Err(Error::with_span(
+                            trait_id.span(),
+                            format!("the trait `{trait_s}` can't be derived with iderive"),
+                        ))
+                    }
                 }
-                let cmp = self.#name.partial_cmp(&other.#name);
-            });
-        });
-        output.extend::<TokenStream>(quote! {{
-            #[inline]
-            fn partial_cmp(&self, other: &Self) -> Option<::core::cmp::Ordering> {
-                #cmp cmp
             }
-        }});
+
+            s.into_token_trees(&mut output);
+            Ok(())
+        } else if let Some(tt) = input.next() {
+            if let TokenTree::Ident(i) = &tt {
+                if i.to_string() == "enum" {
+                    return Err(Error::with_span(
+                        tt.span(),
+                        "enums aren't currently supported by iderive",
+                    ));
+                }
+            }
+            Err(Error::with_span(tt.span(), "expected struct"))
+        } else {
+            Err(Error::new("unexpected end of input; expected struct"))
+        }
+    })() {
+        Ok(()) => (),
+        Err(e) => e.into_token_trees(&mut output),
     }
+
+    output
 }
 
-fn derive_ord(input: &Input, traitid: &Ident, output: &mut TokenStream) {
-    let mut cmp = quote! { let cmp = ::core::cmp::Ordering::Equal; };
-    input.begin_trait(quote! { ::core::cmp::#traitid }, output, |name| {
-        cmp.extend(quote! {
-            if cmp != ::core::cmp::Ordering::Equal {
-                return cmp;
-            }
-            let cmp = self.#name.cmp(&other.#name);
-        });
-    });
-    output.extend::<TokenStream>(quote! {{
-        #[inline]
-        fn cmp(&self, other: &Self) -> ::core::cmp::Ordering {
-            #cmp cmp
-        }
-    }});
-}
+fn impl_for_struct(
+    output: &mut impl Extend<TokenTree>,
+    s: &mut Struct,
+    trait_path: Path,
+    per_impl: impl FnOnce(Vec<TokenTree>) -> TokenStream,
+    per_field: impl Fn(&TokenTree, &Field) -> TokenStream,
+) {
+    let mut where_clauses = s.where_clauses.clone().unwrap_or_default();
+    let mut body = Vec::new();
 
-fn derive_hash(input: &Input, traitid: &Ident, output: &mut TokenStream) {
-    let mut hash = TokenStream::new();
-    input.begin_trait(quote! { ::core::hash::#traitid }, output, |name| {
-        hash.extend(quote! { self.#name.hash(state); });
+    for (i, field) in s.fields.iter().enumerate() {
+        let fid = if let Some(name) = &field.name {
+            TokenTree::Ident(name.clone())
+        } else {
+            TokenTree::Literal(Literal::usize_unsuffixed(i))
+        };
+        body.extend(per_field(&fid, field));
+
+        let mut clause = Vec::new();
+        field.ty.to_token_trees(&mut clause);
+        <Op![:]>::default().into_token_trees(&mut clause);
+        trait_path.to_token_trees(&mut clause);
+        where_clauses.push(clause.into());
+    }
+
+    let ident = &s.ident;
+    let generics = s.generics.clone().map(|mut g| {
+        g.remove_init();
+        g
     });
-    output.extend::<TokenStream>(quote! {{
-        #[inline]
-        fn hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
-            #hash
+    let generics_sym_only = generics.as_ref().map(GenericsSymOnly::from);
+    let body = per_impl(body);
+
+    output.extend(miniquote! {
+        #[automatically_derived]
+        impl #generics #trait_path for #ident #generics_sym_only #where_clauses {
+            #body
         }
-    }});
+    });
 }
