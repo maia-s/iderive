@@ -41,6 +41,8 @@ let c = a; // Works!
 `Default`, `PartialEq`, `Eq`, `PartialOrd`, `Ord` and `Hash`.
 
 ## Version history
+- 1.2.2
+  - Fix parsing of attributes
 - 1.2.1
   - Fix parsing of field visibility
 - 1.2.0

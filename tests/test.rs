@@ -148,6 +148,7 @@ fn named_struct_1() {
     assert_eq!(s, s4);
     assert_eq!("Named { one: 0 }", format!("{:?}", s));
 
+    #[repr(transparent)]
     #[iderive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Hash)]
     struct Named2 {
         one: u32,
@@ -182,7 +183,7 @@ fn named_struct_2() {
     #[iderive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Hash)]
     struct Named2 {
         pub one: u32,
-        pub two: i64,
+        pub(crate) two: i64,
     }
 
     let s = Named2 { one: 0, two: 1 };

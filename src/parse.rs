@@ -396,7 +396,7 @@ impl<T: IntoTokenTrees + Clone> ToTokenTrees for &mut T {
 
 pub(crate) struct Attribute {
     hash_token: Op![#],
-    group: Group<DELIM_BRACE>,
+    group: Group<DELIM_BRACKET>,
 }
 
 impl TryParse for Attribute {
@@ -408,7 +408,7 @@ impl TryParse for Attribute {
         input: &mut Peekable<impl Iterator<Item = TokenTree>>,
     ) -> Result<Option<Self>, Error> {
         if let Some(hash_token) = <Op![#]>::try_parse(input)? {
-            let group = Group::<DELIM_BRACE>::parse(input)?;
+            let group = Group::<DELIM_BRACKET>::parse(input)?;
             Ok(Some(Attribute { hash_token, group }))
         } else {
             Ok(None)
