@@ -216,11 +216,24 @@ fn generics() {
     impl<T> Trait<T> for String {}
     struct S<T, const A: bool>(T);
 
-    #[iderive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    struct Struct<T, U: Trait<T> = T, const A: bool = true, V = S<U, A>>(PhantomData<(T, U, V)>);
+    fn zero() -> i32 {
+        0
+    }
 
-    let s = Struct::<String>::default();
-    let s2 = s;
-    let s3 = s;
-    assert!(s2 <= s3);
+    fn test<F: Fn() -> i32>(_: F) {
+        #[iderive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        struct Struct<T, W: Fn() -> i32, U: Trait<T> = T, const A: bool = true, V = S<U, A>>(
+            PhantomData<fn() -> T>,
+            PhantomData<(U, V, W)>,
+        );
+
+        let s = Struct::<String, F>::default();
+        let s2 = s;
+        let s3 = s;
+        assert!(s2 <= s3);
+        let _ = s.0;
+        let _ = s.1;
+    }
+
+    test(zero);
 }

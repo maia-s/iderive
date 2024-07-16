@@ -51,17 +51,27 @@ pub(crate) const fn into_ascii_char_second(s: &str) -> char {
     byte as char
 }
 
-// this doesn't have to worry about `<` `>` in operators bc those will be inside `{}` groups
+// this doesn't have to worry about `<` `>` in operators bc those will be inside `{}` groups,
+// except for the `->` operator
 fn get_matching_generic_angle_brackets(
     input: &mut Peekable<impl Iterator<Item = TokenTree>>,
     output: &mut Vec<TokenTree>,
 ) -> Result<(), Error> {
     let mut level = 0;
-    for tt in input.by_ref() {
+    while let Some(tt) = input.next() {
         if let TokenTree::Punct(p) = &tt {
             match p.as_char() {
                 '<' => level += 1,
                 '>' => level -= 1,
+                '-' | '=' if p.spacing() == Spacing::Joint => {
+                    output.push(tt);
+                    if let Some(TokenTree::Punct(p)) = input.peek() {
+                        if p.as_char() == '>' {
+                            output.push(input.next().unwrap());
+                        }
+                    }
+                    continue;
+                }
                 _ => (),
             }
         }
@@ -681,6 +691,14 @@ impl TryParse for Generic {
                                 }
                             }
                         }
+                    }
+
+                    '-' | '=' if p.spacing() == Spacing::Joint => {
+                        tokens.push(input.next().unwrap());
+                        if let Some(TokenTree::Punct(_)) = input.peek() {
+                            tokens.push(input.next().unwrap());
+                        }
+                        continue;
                     }
 
                     '=' if eq_token.is_none() => {
