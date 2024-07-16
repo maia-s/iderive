@@ -181,8 +181,8 @@ fn named_struct_2() {
 
     #[iderive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Hash)]
     struct Named2 {
-        one: u32,
-        two: i64,
+        pub one: u32,
+        pub two: i64,
     }
 
     let s = Named2 { one: 0, two: 1 };

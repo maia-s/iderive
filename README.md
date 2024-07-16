@@ -41,6 +41,8 @@ let c = a; // Works!
 `Default`, `PartialEq`, `Eq`, `PartialOrd`, `Ord` and `Hash`.
 
 ## Version history
+- 1.2.1
+  - Fix parsing of field visibility
 - 1.2.0
   - Rewrite; iderive now has no dependencies
   - Don't use canonical implementations, because this breaks if the other trait fails bounds

@@ -431,6 +431,7 @@ pub const NO_FIELDS: u8 = 4;
 
 pub(crate) struct Field<const FIELD_TYPES: u8 = { NAMED_FIELDS | UNNAMED_FIELDS }> {
     pub attrs: Attributes,
+    pub vis: Option<Visibility>,
     pub name: Option<Ident>,
     pub colon_token: Option<Op![:]>,
     pub ty: Type,
@@ -440,6 +441,7 @@ impl From<Field<NAMED_FIELDS>> for Field {
     fn from(value: Field<NAMED_FIELDS>) -> Self {
         Self {
             attrs: value.attrs,
+            vis: value.vis,
             name: value.name,
             colon_token: value.colon_token,
             ty: value.ty,
@@ -451,6 +453,7 @@ impl From<Field<UNNAMED_FIELDS>> for Field {
     fn from(value: Field<UNNAMED_FIELDS>) -> Self {
         Self {
             attrs: value.attrs,
+            vis: value.vis,
             name: value.name,
             colon_token: value.colon_token,
             ty: value.ty,
@@ -467,6 +470,7 @@ impl TryParse for Field<NAMED_FIELDS> {
         input: &mut Peekable<impl Iterator<Item = TokenTree>>,
     ) -> Result<Option<Self>, Error> {
         let attrs = Attributes::parse(input)?;
+        let vis = Visibility::try_parse(input)?;
         let name = if attrs.is_empty() {
             if let Some(name) = Ident::try_parse(input)? {
                 name
@@ -481,6 +485,7 @@ impl TryParse for Field<NAMED_FIELDS> {
         get_tts_with_matching_angle_brackets_until_comma(input, &mut ty)?;
         Ok(Some(Self {
             attrs,
+            vis,
             name: Some(name),
             colon_token,
             ty: ty.into(),
@@ -497,6 +502,7 @@ impl TryParse for Field<UNNAMED_FIELDS> {
         input: &mut Peekable<impl Iterator<Item = TokenTree>>,
     ) -> Result<Option<Self>, Error> {
         let attrs = Attributes::parse(input)?;
+        let vis = Visibility::try_parse(input)?;
         let mut ty = Vec::new();
         get_tts_with_matching_angle_brackets_until_comma(input, &mut ty)?;
         if ty.is_empty() {
@@ -504,6 +510,7 @@ impl TryParse for Field<UNNAMED_FIELDS> {
         } else {
             Ok(Some(Self {
                 attrs,
+                vis,
                 name: None,
                 colon_token: None,
                 ty: ty.into(),
@@ -515,6 +522,7 @@ impl TryParse for Field<UNNAMED_FIELDS> {
 impl<const FIELD_TYPES: u8> IntoTokenTrees for Field<FIELD_TYPES> {
     fn into_token_trees(self, output: &mut impl Extend<TokenTree>) {
         self.attrs.into_token_trees(output);
+        self.vis.into_token_trees(output);
         if FIELD_TYPES & NAMED_FIELDS != 0 {
             self.name.into_token_trees(output);
             self.colon_token.into_token_trees(output);
