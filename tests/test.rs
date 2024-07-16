@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 use core::marker::PhantomData;
 use iderive::iderive;
 
@@ -210,10 +212,11 @@ fn canonical() {
     assert!(s < s2);
 }
 
+trait Trait<T> {}
+
 #[test]
 fn generics() {
-    trait Trait<T> {}
-    impl<T> Trait<T> for String {}
+    impl<T> Trait<T> for fn() -> String {}
     struct S<T, const A: bool>(T);
 
     fn zero() -> i32 {
@@ -222,10 +225,13 @@ fn generics() {
 
     fn test<F: Fn() -> i32>(_: F) {
         #[iderive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-        struct Struct<T, W: Fn() -> i32, U: Trait<T> = T, const A: bool = true, V = S<U, A>>(
-            PhantomData<fn() -> T>,
-            PhantomData<(U, V, W)>,
-        );
+        struct Struct<
+            T,
+            W: Fn() -> i32,
+            U: crate::Trait<fn() -> T> = fn() -> T,
+            const A: ::core::primitive::bool = { !false },
+            V = S<fn() -> fn() -> fn(), A>,
+        >(PhantomData<fn() -> T>, PhantomData<(U, fn() -> V, W)>);
 
         let s = Struct::<String, F>::default();
         let s2 = s;
