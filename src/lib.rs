@@ -50,7 +50,6 @@
 //! See README.md for version history.
 
 #![allow(clippy::blocks_in_conditions)]
-//#![recursion_limit = "1024"]
 
 macro_rules! Op {
     ($op:tt) => {
